@@ -1,0 +1,63 @@
+---
+# =============================================================================
+# Grafana Alloy — Windows + MSSQL Playbook
+#
+# Deploys Alloy with OS-level metrics (windows_exporter), event logs,
+# and MSSQL metrics + logs using the pre-assembled configs from
+# examples/windows-mssql/.
+#
+# Prerequisites:
+#   - WinRM configured on target hosts (ansible.windows collection)
+#   - ansible-galaxy collection install ansible.windows community.windows
+#   - SQL Server installed on target hosts
+#   - Alloy service account (NT AUTHORITY\SYSTEM) granted SQL Server access:
+#       CREATE LOGIN [NT AUTHORITY\SYSTEM] FROM WINDOWS;
+#       GRANT VIEW SERVER STATE TO [NT AUTHORITY\SYSTEM];
+#       GRANT VIEW ANY DEFINITION TO [NT AUTHORITY\SYSTEM];
+#
+# Usage:
+#   ansible-playbook -i inventory/hosts.yml playbooks/windows-mssql.yml
+# =============================================================================
+
+- name: Deploy Alloy — Windows + MSSQL
+  hosts: alloy_windows_mssql
+  gather_facts: true
+
+  vars:
+    # .alloy files to copy into the Alloy install directory.
+    alloy_config_files:
+      - "{{ playbook_dir }}/../../examples/windows-mssql/endpoints.alloy"
+      - "{{ playbook_dir }}/../../examples/windows-mssql/labels.alloy"
+      - "{{ playbook_dir }}/../../examples/windows-mssql/alloy-health.alloy"
+      - "{{ playbook_dir }}/../../examples/windows-mssql/os.alloy"
+      - "{{ playbook_dir }}/../../examples/windows-mssql/mssql.alloy"
+
+    # Security groups per Grafana docs.
+    alloy_win_security_groups:
+      - "Event Log Readers"
+      - "Performance Monitor Users"
+
+    # Environment variable fragments (merged into registry on Windows).
+    alloy_env_files:
+      - name: "00-endpoints"
+        vars:
+          PROMETHEUS_REMOTE_WRITE_URL: "{{ prometheus_remote_write_url | default('https://prometheus.example.com/api/v1/write') }}"
+          PROMETHEUS_USERNAME: "{{ prometheus_username | default('') }}"
+          PROMETHEUS_PASSWORD: "{{ prometheus_password | default('') }}"
+          LOKI_WRITE_URL: "{{ loki_write_url | default('https://loki.example.com/loki/api/v1/push') }}"
+          LOKI_USERNAME: "{{ loki_username | default('') }}"
+          LOKI_PASSWORD: "{{ loki_password | default('') }}"
+      - name: "01-labels"
+        vars:
+          ENVIRONMENT: "{{ environment_label | default('dev') }}"
+          TEAM: "{{ team_label | default('mssql') }}"
+          REGION: "{{ region_label | default('') }}"
+          SYSTEM: "{{ system_label | default('') }}"
+          SERVER_CLASS: "{{ server_class_label | default('database') }}"
+          ZONE: "{{ zone_label | default('') }}"
+      - name: "20-mssql"
+        vars:
+          MSSQL_CONNECTION_STRING: "{{ mssql_connection_string | default('sqlserver://localhost:1433?trusted_connection=yes') }}"
+
+  roles:
+    - role: ../roles/alloy

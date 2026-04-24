@@ -1,0 +1,43 @@
+// PostgreSQL Metrics Module (Linux)
+// Collects PostgreSQL server metrics using the built-in Postgres exporter.
+// Follows Grafana Cloud integration conventions.
+//
+// Metrics include: connections, transactions, locks, replication, table/index stats.
+// Responsibility: Database / DBA team
+
+prometheus.exporter.postgres "integrations_postgres_exporter" {
+	data_source_names  = [sys.env("POSTGRES_DSN")]
+	enabled_collectors = ["database", "locks", "long_running_transactions", "postmaster", "replication", "stat_bgwriter", "stat_database", "stat_statements", "stat_user_tables", "statio_user_indexes"]
+}
+
+discovery.relabel "integrations_postgres_exporter" {
+	targets = prometheus.exporter.postgres.integrations_postgres_exporter.targets
+
+	rule {
+		target_label = "instance"
+		replacement  = constants.hostname
+	}
+
+	rule {
+		target_label = "job"
+		replacement  = "integrations/postgres_exporter"
+	}
+}
+
+prometheus.scrape "integrations_postgres_exporter" {
+	targets    = discovery.relabel.integrations_postgres_exporter.output
+	forward_to = [prometheus.relabel.integrations_postgres_exporter.receiver]
+
+	scrape_interval = "60s"
+	job_name        = "integrations/postgres_exporter"
+}
+
+prometheus.relabel "integrations_postgres_exporter" {
+	forward_to = [prometheus.relabel.add_common_labels.receiver]
+
+	rule {
+		source_labels = ["__name__"]
+		regex         = "pg_database_size_bytes|pg_exporter_last_scrape_error|pg_locks_count|pg_long_running_transactions|pg_postmaster_start_time_seconds|pg_replication_is_replica|pg_replication_lag_seconds|pg_settings_max_connections|pg_settings_max_locks_per_transaction|pg_settings_superuser_reserved_connections|pg_stat_activity_count|pg_stat_archiver_failed_count|pg_stat_bgwriter_buffers_alloc_total|pg_stat_bgwriter_buffers_clean_total|pg_stat_bgwriter_checkpoints_req_total|pg_stat_bgwriter_checkpoints_timed_total|pg_stat_bgwriter_maxwritten_clean_total|pg_stat_database_blks_hit|pg_stat_database_blks_read|pg_stat_database_conflicts|pg_stat_database_deadlocks|pg_stat_database_temp_bytes|pg_stat_database_tup_deleted|pg_stat_database_tup_fetched|pg_stat_database_tup_inserted|pg_stat_database_tup_returned|pg_stat_database_tup_updated|pg_stat_database_xact_commit|pg_stat_database_xact_rollback|pg_stat_replication_pg_current_wal_lsn_bytes|pg_stat_replication_pg_wal_lsn_diff|pg_stat_statements_calls_total|pg_stat_statements_rows_total|pg_stat_statements_seconds_total|pg_stat_user_tables_idx_scan|pg_stat_user_tables_last_autoanalyze|pg_stat_user_tables_last_autovacuum|pg_stat_user_tables_n_dead_tup|pg_stat_user_tables_n_live_tup|pg_stat_user_tables_seq_scan|pg_statio_user_indexes_idx_blks_hit_total|pg_statio_user_indexes_idx_blks_read_total|pg_up|up"
+		action        = "keep"
+	}
+}

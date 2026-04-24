@@ -1,0 +1,20 @@
+// Linux File Logs Module
+// Collects logs from common Linux log files under /var/log.
+// Aligned with Grafana Cloud Linux Server integration defaults.
+//
+// Covers syslog, messages, and other standard log files.
+// Responsibility: OS / Platform team
+
+local.file_match "integrations_node_exporter" {
+	path_targets = [{
+		__address__ = "localhost",
+		__path__    = "/var/log/{syslog,messages,*.log}",
+		instance    = constants.hostname,
+		job         = "integrations/node_exporter",
+	}]
+}
+
+loki.source.file "integrations_node_exporter" {
+	targets    = local.file_match.integrations_node_exporter.targets
+	forward_to = [loki.process.add_common_labels.receiver]
+}

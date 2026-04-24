@@ -1,0 +1,77 @@
+---
+# Alloy version to install. Use "latest" or a specific version like "1.8.1".
+alloy_version: "latest"
+
+# Set to true to uninstall Alloy instead of deploying.
+alloy_uninstall: false
+
+# Expose Alloy HTTP port via firewalld (simple rule only).
+alloy_expose_port: false
+
+# GitHub API URL used to resolve "latest" version.
+alloy_github_api_url: "https://api.github.com/repos/grafana/alloy/releases/latest"
+
+# Package download URLs (auto-resolved via alloy_version and architecture).
+alloy_download_url_rpm: "https://github.com/grafana/alloy/releases/download/v{{ alloy_version }}/alloy-{{ alloy_version }}-1.{{ __alloy_arch }}.rpm"
+alloy_download_url_deb: "https://github.com/grafana/alloy/releases/download/v{{ alloy_version }}/alloy-{{ alloy_version }}-1.{{ __alloy_arch }}.deb"
+
+# Readiness check settings.
+alloy_readiness_check_use_https: false
+alloy_readiness_check_use_proxy: true
+
+# Additional OS groups for the alloy user (e.g. systemd-journal for journal logs).
+alloy_user_groups:
+  - "systemd-journal"
+
+# Environment file variables passed to the Alloy systemd unit.
+# CONFIG_FILE can point to a single file or a directory of .alloy files.
+alloy_env_file_vars: {}
+
+# Systemd unit override (drop-in).
+alloy_systemd_override: {}
+
+# Inline Alloy config (River syntax). Ignored when CONFIG_FILE is set.
+alloy_config: {}
+
+# --- Multi-config directory deployment ---
+# Path on the target where .alloy config files are deployed.
+# Defaults to /etc/alloy/ — the standard Alloy config directory.
+alloy_config_dir: "/etc/alloy"
+
+# List of local .alloy files to copy into alloy_config_dir.
+# Paths are relative to the playbook or can be absolute.
+alloy_config_files: []
+#   - "files/endpoints.alloy"
+#   - "files/labels.alloy"
+#   - "files/os.alloy"
+
+# Environment variables written to the Alloy env file (Linux) or registry (Windows).
+# These are available to .alloy configs via sys.env().
+alloy_extra_env_vars: {}
+#   PROMETHEUS_REMOTE_WRITE_URL: "https://prometheus.example.com/api/v1/write"
+#   ENVIRONMENT: "production"
+
+# Drop-in environment files deployed to /etc/alloy/env.d/.
+# Each entry creates a separate .env file. A systemd override loads them all.
+# This allows multiple playbooks to add env vars without overwriting each other.
+# When alloy_env_files is set, alloy_extra_env_vars is ignored.
+alloy_env_files: []
+#   - name: "00-base"
+#     vars:
+#       PROMETHEUS_REMOTE_WRITE_URL: "https://prometheus.example.com/api/v1/write"
+#       ENVIRONMENT: "production"
+#   - name: "20-mysql"
+#     vars:
+#       MYSQL_DSN: "alloy:password@tcp(localhost:3306)/"
+
+# Remove .alloy config files and env.d/*.env files from the target that are
+# not in the current playbook's list. Prevents stale configs from breaking
+# Alloy after switching playbooks. Set to false if you manage files manually.
+alloy_cleanup_stale_files: true
+
+# --- Windows-specific ---
+# Windows security groups to add the Alloy service account to.
+# Defaults match Grafana docs recommendations.
+alloy_win_security_groups:
+  - "Event Log Readers"
+  - "Performance Monitor Users"

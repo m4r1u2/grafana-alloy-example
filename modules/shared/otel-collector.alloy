@@ -1,0 +1,244 @@
+// OpenTelemetry Collector Module
+// Receives OTLP telemetry (traces, metrics, logs) and forwards to Grafana Cloud
+// via the OTLP gateway. Follows the Grafana Cloud default integration config.
+//
+// Configures: OTLP receiver (gRPC + HTTP), resource detection, attribute cleanup,
+// host_info connector, batch processor, and OTLP HTTP exporter.
+//
+// Environment variables required:
+//   OTLP_ENDPOINT   - Grafana Cloud OTLP gateway URL (e.g., https://otlp-gateway-prod-eu-west-2.grafana.net/otlp)
+//   OTLP_USERNAME   - Grafana Cloud instance ID
+//   OTLP_PASSWORD   - Grafana Cloud API token
+//
+// Responsibility: Platform / Observability team
+
+// ============================================================================
+// OTLP Receiver — accepts gRPC (:4317) and HTTP (:4318) from instrumented apps
+// ============================================================================
+
+otelcol.receiver.otlp "default" {
+	// https://grafana.com/docs/alloy/latest/reference/components/otelcol.receiver.otlp/
+
+	// configures the default grpc endpoint "0.0.0.0:4317"
+	grpc { }
+	// configures the default http/protobuf endpoint "0.0.0.0:4318"
+	http { }
+
+	output {
+		metrics = [otelcol.processor.resourcedetection.default.input]
+		logs    = [otelcol.processor.resourcedetection.default.input]
+		traces  = [otelcol.processor.resourcedetection.default.input]
+	}
+}
+
+// ============================================================================
+// Resource Detection — automatically detect host and environment info
+// ============================================================================
+
+otelcol.processor.resourcedetection "default" {
+	// https://grafana.com/docs/alloy/latest/reference/components/otelcol.processor.resourcedetection/
+	detectors = ["env", "system"]
+
+	system {
+		hostname_sources = ["os"]
+	}
+
+	output {
+		metrics = [otelcol.processor.transform.drop_unneeded_resource_attributes.input]
+		logs    = [otelcol.processor.transform.drop_unneeded_resource_attributes.input]
+		traces  = [otelcol.processor.transform.drop_unneeded_resource_attributes.input]
+	}
+}
+
+// ============================================================================
+// Transform — drop noisy resource attributes not needed in Grafana Cloud
+// ============================================================================
+
+otelcol.processor.transform "drop_unneeded_resource_attributes" {
+	// https://grafana.com/docs/alloy/latest/reference/components/otelcol.processor.transform/
+	error_mode = "ignore"
+
+	trace_statements {
+		context    = "resource"
+		statements = [
+			"delete_key(attributes, \"k8s.pod.start_time\")",
+			"delete_key(attributes, \"os.description\")",
+			"delete_key(attributes, \"os.type\")",
+			"delete_key(attributes, \"process.command_args\")",
+			"delete_key(attributes, \"process.executable.path\")",
+			"delete_key(attributes, \"process.pid\")",
+			"delete_key(attributes, \"process.runtime.description\")",
+			"delete_key(attributes, \"process.runtime.name\")",
+			"delete_key(attributes, \"process.runtime.version\")",
+		]
+	}
+
+	trace_statements {
+		context    = "span"
+		statements = [
+			"delete_key(attributes, \"network.peer.port\")",
+			"delete_key(attributes, \"network.peer.address\")",
+			"delete_key(attributes, \"network.protocol.version\")",
+			"delete_key(attributes, \"thread.id\")",
+			"delete_key(attributes, \"thread.name\")",
+			"delete_key(attributes, \"url.scheme\")",
+		]
+	}
+
+	metric_statements {
+		context    = "resource"
+		statements = [
+			"delete_key(attributes, \"k8s.pod.start_time\")",
+			"delete_key(attributes, \"os.description\")",
+			"delete_key(attributes, \"os.type\")",
+			"delete_key(attributes, \"process.command_args\")",
+			"delete_key(attributes, \"process.executable.path\")",
+			"delete_key(attributes, \"process.pid\")",
+			"delete_key(attributes, \"process.runtime.description\")",
+			"delete_key(attributes, \"process.runtime.name\")",
+			"delete_key(attributes, \"process.runtime.version\")",
+		]
+	}
+
+	log_statements {
+		context    = "resource"
+		statements = [
+			"delete_key(attributes, \"k8s.pod.start_time\")",
+			"delete_key(attributes, \"os.description\")",
+			"delete_key(attributes, \"os.type\")",
+			"delete_key(attributes, \"process.command_args\")",
+			"delete_key(attributes, \"process.executable.path\")",
+			"delete_key(attributes, \"process.pid\")",
+			"delete_key(attributes, \"process.runtime.description\")",
+			"delete_key(attributes, \"process.runtime.name\")",
+			"delete_key(attributes, \"process.runtime.version\")",
+		]
+	}
+
+	output {
+		metrics = [otelcol.processor.transform.add_common_resource_attributes.input]
+		logs    = [otelcol.processor.transform.add_common_resource_attributes.input]
+		traces  = [otelcol.processor.transform.add_common_resource_attributes.input]
+	}
+}
+
+// ============================================================================
+// Transform — add common labels as resource attributes to all OTel signals
+// Mirrors the labels added by prometheus.relabel.add_common_labels (metrics)
+// and loki.process.add_common_labels (logs).
+// ============================================================================
+
+otelcol.processor.transform "add_common_resource_attributes" {
+	// https://grafana.com/docs/alloy/latest/reference/components/otelcol.processor.transform/
+	error_mode = "ignore"
+
+	trace_statements {
+		context    = "resource"
+		statements = [
+			"set(attributes[\"environment\"], \"" + sys.env("ENVIRONMENT") + "\")",
+			"set(attributes[\"team\"], \"" + sys.env("TEAM") + "\")",
+			"set(attributes[\"region\"], \"" + sys.env("REGION") + "\")",
+			"set(attributes[\"system\"], \"" + sys.env("SYSTEM") + "\")",
+			"set(attributes[\"server_class\"], \"" + sys.env("SERVER_CLASS") + "\")",
+			"set(attributes[\"zone\"], \"" + sys.env("ZONE") + "\")",
+		]
+	}
+
+	metric_statements {
+		context    = "resource"
+		statements = [
+			"set(attributes[\"environment\"], \"" + sys.env("ENVIRONMENT") + "\")",
+			"set(attributes[\"team\"], \"" + sys.env("TEAM") + "\")",
+			"set(attributes[\"region\"], \"" + sys.env("REGION") + "\")",
+			"set(attributes[\"system\"], \"" + sys.env("SYSTEM") + "\")",
+			"set(attributes[\"server_class\"], \"" + sys.env("SERVER_CLASS") + "\")",
+			"set(attributes[\"zone\"], \"" + sys.env("ZONE") + "\")",
+		]
+	}
+
+	log_statements {
+		context    = "resource"
+		statements = [
+			"set(attributes[\"environment\"], \"" + sys.env("ENVIRONMENT") + "\")",
+			"set(attributes[\"team\"], \"" + sys.env("TEAM") + "\")",
+			"set(attributes[\"region\"], \"" + sys.env("REGION") + "\")",
+			"set(attributes[\"system\"], \"" + sys.env("SYSTEM") + "\")",
+			"set(attributes[\"server_class\"], \"" + sys.env("SERVER_CLASS") + "\")",
+			"set(attributes[\"zone\"], \"" + sys.env("ZONE") + "\")",
+		]
+	}
+
+	output {
+		metrics = [otelcol.processor.transform.add_resource_attributes_as_metric_attributes.input]
+		logs    = [otelcol.processor.batch.default.input]
+		traces  = [
+			otelcol.processor.batch.default.input,
+			otelcol.connector.host_info.default.input,
+		]
+	}
+}
+
+// ============================================================================
+// Host Info Connector — generates host metrics from trace spans
+// ============================================================================
+
+otelcol.connector.host_info "default" {
+	// https://grafana.com/docs/alloy/latest/reference/components/otelcol.connector.host_info/
+	host_identifiers = ["host.name"]
+
+	output {
+		metrics = [otelcol.processor.batch.default.input]
+	}
+}
+
+// ============================================================================
+// Transform — promote resource attributes to metric datapoint attributes
+// ============================================================================
+
+otelcol.processor.transform "add_resource_attributes_as_metric_attributes" {
+	// https://grafana.com/docs/alloy/latest/reference/components/otelcol.processor.transform/
+	error_mode = "ignore"
+
+	metric_statements {
+		context    = "datapoint"
+		statements = [
+			"set(attributes[\"deployment.environment\"], resource.attributes[\"deployment.environment\"])",
+			"set(attributes[\"service.version\"], resource.attributes[\"service.version\"])",
+		]
+	}
+
+	output {
+		metrics = [otelcol.processor.batch.default.input]
+	}
+}
+
+// ============================================================================
+// Batch Processor — batches telemetry for efficient export
+// ============================================================================
+
+otelcol.processor.batch "default" {
+	// https://grafana.com/docs/alloy/latest/reference/components/otelcol.processor.batch/
+	output {
+		metrics = [otelcol.exporter.otlphttp.grafana_cloud.input]
+		logs    = [otelcol.exporter.otlphttp.grafana_cloud.input]
+		traces  = [otelcol.exporter.otlphttp.grafana_cloud.input]
+	}
+}
+
+// ============================================================================
+// OTLP HTTP Exporter — sends all signals to Grafana Cloud OTLP gateway
+// ============================================================================
+
+otelcol.exporter.otlphttp "grafana_cloud" {
+	// https://grafana.com/docs/alloy/latest/reference/components/otelcol.exporter.otlphttp/
+	client {
+		endpoint = sys.env("OTLP_ENDPOINT")
+		auth     = otelcol.auth.basic.grafana_cloud.handler
+	}
+}
+
+otelcol.auth.basic "grafana_cloud" {
+	// https://grafana.com/docs/alloy/latest/reference/components/otelcol.auth.basic/
+	username = sys.env("OTLP_USERNAME")
+	password = sys.env("OTLP_PASSWORD")
+}

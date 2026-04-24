@@ -1,0 +1,32 @@
+// Shared Environment Variables
+// This file documents all environment variables used across modules.
+// Set these before starting Alloy, or use a .env file / systemd EnvironmentFile.
+//
+// === Endpoints ===
+// PROMETHEUS_REMOTE_WRITE_URL  - Prometheus/Mimir remote write URL
+// PROMETHEUS_USERNAME          - Basic auth username for Prometheus
+// PROMETHEUS_PASSWORD          - Basic auth password for Prometheus
+// LOKI_WRITE_URL              - Loki push API URL
+// LOKI_USERNAME               - Basic auth username for Loki
+// LOKI_PASSWORD               - Basic auth password for Loki
+//
+// === Labels ===
+// ENVIRONMENT                 - Deployment environment (production, staging, dev)
+// TEAM                        - Owning team name (checkout, platform, dba)
+// REGION                      - Deployment region (eu-west-1, us-east-1, etc.)
+// SYSTEM                      - Business system / domain (payments, orders, identity)
+// SERVER_CLASS                - Server role (web, app, db, worker)
+// ZONE                        - Network zone / segment (external-dmz, internal, data)
+//
+// === Database Credentials ===
+// MSSQL_CONNECTION_STRING     - MSSQL connection string
+// MYSQL_DSN                   - MySQL data source name
+// POSTGRES_DSN                - PostgreSQL data source name
+//
+// === Application ===
+// SERVICE_NAME                 - Service name for labeling, aligns with OTel service.name
+//
+// === OpenTelemetry / OTLP Gateway ===
+// OTLP_ENDPOINT               - Grafana Cloud OTLP gateway URL (e.g., https://otlp-gateway-prod-eu-west-2.grafana.net/otlp)
+// OTLP_USERNAME                - Grafana Cloud instance ID for OTLP auth
+// OTLP_PASSWORD                - Grafana Cloud API token for OTLP auth

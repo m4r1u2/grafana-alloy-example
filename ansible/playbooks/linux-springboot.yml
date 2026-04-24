@@ -1,0 +1,69 @@
+---
+# =============================================================================
+# Grafana Alloy — Linux + Spring Boot Playbook
+#
+# Deploys Alloy with OS-level metrics, Spring Boot metrics + logs, and an
+# OpenTelemetry collector for traces using the pre-assembled configs from
+# examples/linux-springboot/.
+#
+# Prerequisites:
+#   - Spring Boot app with Actuator + micrometer-registry-prometheus enabled
+#   - (Optional) OpenTelemetry Java Agent for traces
+#
+# Usage:
+#   ansible-playbook -i inventory/hosts.yml playbooks/linux-springboot.yml
+# =============================================================================
+
+- name: Deploy Alloy — Linux + Spring Boot
+  hosts: alloy_linux_springboot
+  become: true
+
+  vars:
+    # Point Alloy at a config directory instead of a single file.
+    alloy_env_file_vars:
+      CONFIG_FILE: "/etc/alloy/"
+      CUSTOM_ARGS: "--stability.level=generally-available"
+
+    # .alloy files to copy into /etc/alloy/ on the target.
+    alloy_config_files:
+      - "{{ playbook_dir }}/../../examples/linux-springboot/endpoints.alloy"
+      - "{{ playbook_dir }}/../../examples/linux-springboot/labels.alloy"
+      - "{{ playbook_dir }}/../../examples/linux-springboot/alloy-health.alloy"
+      - "{{ playbook_dir }}/../../examples/linux-springboot/otel-collector.alloy"
+      - "{{ playbook_dir }}/../../examples/linux-springboot/os.alloy"
+      - "{{ playbook_dir }}/../../examples/linux-springboot/springboot.alloy"
+
+    # The alloy user needs journal access and log file read access.
+    alloy_user_groups:
+      - "systemd-journal"
+      - "adm"
+
+    # Environment variable fragments deployed to /etc/alloy/env.d/.
+    alloy_env_files:
+      - name: "00-endpoints"
+        vars:
+          PROMETHEUS_REMOTE_WRITE_URL: "{{ prometheus_remote_write_url | default('https://prometheus.example.com/api/v1/write') }}"
+          PROMETHEUS_USERNAME: "{{ prometheus_username | default('') }}"
+          PROMETHEUS_PASSWORD: "{{ prometheus_password | default('') }}"
+          LOKI_WRITE_URL: "{{ loki_write_url | default('https://loki.example.com/loki/api/v1/push') }}"
+          LOKI_USERNAME: "{{ loki_username | default('') }}"
+          LOKI_PASSWORD: "{{ loki_password | default('') }}"
+      - name: "01-labels"
+        vars:
+          ENVIRONMENT: "{{ environment_label | default('dev') }}"
+          TEAM: "{{ team_label | default('') }}"
+          REGION: "{{ region_label | default('') }}"
+          SYSTEM: "{{ system_label | default('') }}"
+          SERVER_CLASS: "{{ server_class_label | default('') }}"
+          ZONE: "{{ zone_label | default('') }}"
+      - name: "10-otel"
+        vars:
+          OTLP_ENDPOINT: "{{ otlp_endpoint | default('https://otlp-gateway.example.com/otlp') }}"
+          OTLP_USERNAME: "{{ otlp_username | default('') }}"
+          OTLP_PASSWORD: "{{ otlp_password | default('') }}"
+      - name: "30-springboot"
+        vars:
+          SERVICE_NAME: "{{ service_name | default('') }}"
+
+  roles:
+    - role: ../roles/alloy

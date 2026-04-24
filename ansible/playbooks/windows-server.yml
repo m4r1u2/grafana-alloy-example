@@ -1,0 +1,59 @@
+---
+# =============================================================================
+# Grafana Alloy — Windows Server Playbook
+#
+# Deploys Alloy with OS-level metrics (windows_exporter) and event logs
+# using the pre-assembled configs from examples/windows-server/.
+#
+# Prerequisites:
+#   - WinRM configured on target hosts (ansible.windows collection)
+#   - ansible-galaxy collection install ansible.windows community.windows
+#
+# Usage:
+#   ansible-playbook -i inventory/hosts.yml playbooks/windows-server.yml
+# =============================================================================
+
+- name: Deploy Alloy — Windows Server
+  hosts: alloy_windows
+  gather_facts: true
+
+  vars:
+    # .alloy files to copy into the Alloy install directory.
+    alloy_config_files:
+      - "{{ playbook_dir }}/../../examples/windows-server/endpoints.alloy"
+      - "{{ playbook_dir }}/../../examples/windows-server/labels.alloy"
+      - "{{ playbook_dir }}/../../examples/windows-server/alloy-health.alloy"
+      - "{{ playbook_dir }}/../../examples/windows-server/otel-collector.alloy"
+      - "{{ playbook_dir }}/../../examples/windows-server/os.alloy"
+
+    # Security groups per Grafana docs.
+    alloy_win_security_groups:
+      - "Event Log Readers"
+      - "Performance Monitor Users"
+
+    # Environment variable fragments (merged into registry on Windows).
+    alloy_env_files:
+      - name: "00-endpoints"
+        vars:
+          PROMETHEUS_REMOTE_WRITE_URL: "{{ prometheus_remote_write_url | default('https://prometheus.example.com/api/v1/write') }}"
+          PROMETHEUS_USERNAME: "{{ prometheus_username | default('') }}"
+          PROMETHEUS_PASSWORD: "{{ prometheus_password | default('') }}"
+          LOKI_WRITE_URL: "{{ loki_write_url | default('https://loki.example.com/loki/api/v1/push') }}"
+          LOKI_USERNAME: "{{ loki_username | default('') }}"
+          LOKI_PASSWORD: "{{ loki_password | default('') }}"
+      - name: "01-labels"
+        vars:
+          ENVIRONMENT: "{{ environment_label | default('dev') }}"
+          TEAM: "{{ team_label | default('') }}"
+          REGION: "{{ region_label | default('') }}"
+          SYSTEM: "{{ system_label | default('') }}"
+          SERVER_CLASS: "{{ server_class_label | default('') }}"
+          ZONE: "{{ zone_label | default('') }}"
+      - name: "10-otel"
+        vars:
+          OTLP_ENDPOINT: "{{ otlp_endpoint | default('https://otlp-gateway.example.com/otlp') }}"
+          OTLP_USERNAME: "{{ otlp_username | default('') }}"
+          OTLP_PASSWORD: "{{ otlp_password | default('') }}"
+
+  roles:
+    - role: ../roles/alloy

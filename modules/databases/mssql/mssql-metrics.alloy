@@ -1,0 +1,42 @@
+// MSSQL Metrics Module (Windows)
+// Collects Microsoft SQL Server metrics using the built-in MSSQL exporter.
+// Follows Grafana Cloud integration conventions.
+//
+// Metrics include: connections, batch requests, buffer cache, locks, transactions.
+// Responsibility: Database / DBA team
+
+prometheus.exporter.mssql "integrations_mssql" {
+	connection_string = sys.env("MSSQL_CONNECTION_STRING")
+}
+
+discovery.relabel "integrations_mssql" {
+	targets = prometheus.exporter.mssql.integrations_mssql.targets
+
+	rule {
+		target_label = "job"
+		replacement  = "integrations/mssql"
+	}
+
+	rule {
+		target_label = "instance"
+		replacement  = constants.hostname
+	}
+}
+
+prometheus.scrape "integrations_mssql" {
+	targets    = discovery.relabel.integrations_mssql.output
+	forward_to = [prometheus.relabel.integrations_mssql.receiver]
+
+	scrape_interval = "60s"
+	job_name        = "integrations/mssql"
+}
+
+prometheus.relabel "integrations_mssql" {
+	forward_to = [prometheus.relabel.add_common_labels.receiver]
+
+	rule {
+		source_labels = ["__name__"]
+		regex         = "up|mssql_available_commit_memory_bytes|mssql_batch_requests_total|mssql_buffer_cache_hit_ratio|mssql_build_info|mssql_checkpoint_pages_sec|mssql_connections|mssql_deadlocks_total|mssql_io_stall_seconds_total|mssql_kill_connection_errors_total|mssql_log_growths_total|mssql_os_memory|mssql_os_page_file|mssql_page_fault_count_total|mssql_server_target_memory_bytes|mssql_server_total_memory_bytes"
+		action        = "keep"
+	}
+}

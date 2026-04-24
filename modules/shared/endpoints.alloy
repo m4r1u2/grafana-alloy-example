@@ -1,0 +1,47 @@
+// Shared Endpoints Module
+// This module defines the remote write endpoints for metrics (Prometheus/Mimir)
+// and log shipping (Loki). All other modules forward data to these components.
+//
+// Usage: Update the endpoint URLs and authentication to match your Grafana stack.
+
+// ============================================================================
+// Prometheus Remote Write (Metrics)
+// ============================================================================
+
+prometheus.remote_write "default" {
+	endpoint {
+		url = sys.env("PROMETHEUS_REMOTE_WRITE_URL")
+
+		basic_auth {
+			username = sys.env("PROMETHEUS_USERNAME")
+			password = sys.env("PROMETHEUS_PASSWORD")
+		}
+
+		// Queue configuration for reliability
+		queue_config {
+			capacity             = 10000
+			max_shards           = 50
+			min_shards           = 1
+			max_samples_per_send = 2000
+			batch_send_deadline  = "5s"
+			min_backoff          = "30ms"
+			max_backoff          = "5s"
+			retry_on_http_429    = true
+		}
+	}
+}
+
+// ============================================================================
+// Loki Write (Logs)
+// ============================================================================
+
+loki.write "default" {
+	endpoint {
+		url = sys.env("LOKI_WRITE_URL")
+
+		basic_auth {
+			username = sys.env("LOKI_USERNAME")
+			password = sys.env("LOKI_PASSWORD")
+		}
+	}
+}

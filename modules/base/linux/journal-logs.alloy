@@ -1,0 +1,54 @@
+// Linux Journal Logs Module
+// Collects logs from the systemd journal.
+// Aligned with Grafana Cloud Linux Server integration defaults.
+//
+// Captures kernel messages, service logs, and system events.
+// Responsibility: OS / Platform team
+
+loki.source.journal "integrations_node_exporter" {
+	forward_to    = [loki.process.journal_logs.receiver]
+	relabel_rules = loki.relabel.journal_relabel.rules
+	max_age       = "12h0m0s"
+}
+
+loki.relabel "journal_relabel" {
+	forward_to = []
+
+	rule {
+		source_labels = ["__journal__systemd_unit"]
+		target_label  = "unit"
+	}
+
+	rule {
+		source_labels = ["__journal__boot_id"]
+		target_label  = "boot_id"
+	}
+
+	rule {
+		source_labels = ["__journal__transport"]
+		target_label  = "transport"
+	}
+
+	rule {
+		source_labels = ["__journal_priority_keyword"]
+		target_label  = "level"
+	}
+}
+
+loki.process "journal_logs" {
+	forward_to = [loki.relabel.integrations_node_exporter_logs.receiver]
+}
+
+loki.relabel "integrations_node_exporter_logs" {
+	forward_to = [loki.process.add_common_labels.receiver]
+
+	rule {
+		target_label = "instance"
+		replacement  = constants.hostname
+	}
+
+	rule {
+		target_label = "job"
+		replacement  = "integrations/node_exporter"
+	}
+}

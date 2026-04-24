@@ -1,0 +1,104 @@
+---
+# =============================================================================
+# Example Inventory
+#
+# Copy to hosts.yml and fill in your target hosts and credentials.
+#
+# Usage:
+#   ansible-playbook -i inventory/hosts.yml playbooks/linux-server.yml
+#   ansible-playbook -i inventory/hosts.yml playbooks/linux-server-otel.yml
+#   ansible-playbook -i inventory/hosts.yml playbooks/linux-mysql.yml
+#   ansible-playbook -i inventory/hosts.yml playbooks/linux-postgres.yml
+#   ansible-playbook -i inventory/hosts.yml playbooks/linux-springboot.yml
+#   ansible-playbook -i inventory/hosts.yml playbooks/windows-server.yml
+#   ansible-playbook -i inventory/hosts.yml playbooks/windows-mssql.yml
+# =============================================================================
+
+all:
+  children:
+    alloy_linux:
+      hosts:
+        my-vm-01:
+          ansible_host: 192.168.1.100
+          ansible_user: ubuntu
+          # ansible_ssh_private_key_file: ~/.ssh/id_rsa
+
+      vars:
+        # --- Grafana Cloud / Prometheus ---
+        prometheus_remote_write_url: "https://prometheus-prod-01-eu-west-0.grafana.net/api/prom/push"
+        prometheus_username: "123456"
+        prometheus_password: "glc_xxxxxxxxxxxxx"
+
+        # --- Grafana Cloud / Loki ---
+        loki_write_url: "https://logs-prod-eu-west-0.grafana.net/loki/api/v1/push"
+        loki_username: "123456"
+        loki_password: "glc_xxxxxxxxxxxxx"
+
+        # --- Labels ---
+        environment_label: "production"
+        team_label: "platform"
+        region_label: "eu-west-1"
+        system_label: "payments"
+        server_class_label: "web"
+        zone_label: "external-dmz"
+
+    # Linux hosts with MySQL
+    alloy_linux_mysql:
+      hosts:
+        my-vm-01:    # same host, different playbook
+      vars:
+        mysql_dsn: "alloy:password@tcp(localhost:3306)/"
+
+    # Linux hosts with PostgreSQL
+    alloy_linux_postgres:
+      hosts:
+        my-vm-01:    # same host, different playbook
+      vars:
+        postgres_dsn: "postgresql://alloy:password@localhost:5432/postgres?sslmode=disable"
+
+    # Linux hosts with Spring Boot (requires OTel collector)
+    alloy_linux_springboot:
+      hosts:
+        my-vm-01:
+      vars:
+        service_name: "my-springboot-app"
+        otlp_endpoint: "https://otlp-gateway-prod-eu-west-0.grafana.net/otlp"
+        otlp_username: "123456"
+        otlp_password: "glc_xxxxxxxxxxxxx"
+
+    alloy_windows:
+      hosts:
+        my-win-01:
+          ansible_host: 192.168.1.200
+          ansible_user: Administrator
+          ansible_password: "{{ vault_win_password }}"
+          ansible_connection: winrm
+          ansible_winrm_transport: ntlm
+          ansible_winrm_server_cert_validation: ignore
+          ansible_port: 5986
+
+      vars:
+        # --- Grafana Cloud / Prometheus ---
+        prometheus_remote_write_url: "https://prometheus-prod-01-eu-west-0.grafana.net/api/prom/push"
+        prometheus_username: "123456"
+        prometheus_password: "glc_xxxxxxxxxxxxx"
+
+        # --- Grafana Cloud / Loki ---
+        loki_write_url: "https://logs-prod-eu-west-0.grafana.net/loki/api/v1/push"
+        loki_username: "123456"
+        loki_password: "glc_xxxxxxxxxxxxx"
+
+        # --- Labels ---
+        environment_label: "production"
+        team_label: "platform"
+        region_label: "eu-west-1"
+        system_label: "payments"
+        server_class_label: "web"
+        zone_label: "external-dmz"
+
+    # Windows hosts with MSSQL — inherits connection settings from alloy_windows
+    alloy_windows_mssql:
+      hosts:
+        my-win-01:    # same host, different playbook
+      vars:
+        mssql_connection_string: "sqlserver://localhost:1433?trusted_connection=yes"

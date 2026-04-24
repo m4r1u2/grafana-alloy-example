@@ -1,0 +1,291 @@
+---
+# ---------------------------------------------------------------------------
+# Resolve version
+# ---------------------------------------------------------------------------
+- name: Obtain the latest version from the GitHub repo
+  when: alloy_version == "latest"
+  block:
+    - name: Scrape GitHub API endpoint to obtain latest Alloy version
+      ansible.builtin.uri:
+        url: "{{ alloy_github_api_url }}"
+        method: GET
+        body_format: json
+      become: false
+      delegate_to: localhost
+      run_once: true
+      check_mode: false
+      register: __github_latest_version
+
+    - name: Latest available Alloy version
+      ansible.builtin.set_fact:
+        alloy_version: "{{ __github_latest_version.json.tag_name | regex_replace('^v?(\\d+\\.\\d+\\.\\d+)$', '\\1') }}"
+
+# ---------------------------------------------------------------------------
+# Check currently deployed version
+# ---------------------------------------------------------------------------
+- name: Verify current deployed version
+  block:
+    - name: Check if Alloy binary is present
+      ansible.builtin.stat:
+        path: "/usr/bin/alloy"
+      register: __already_deployed
+
+    - name: Obtain current deployed Alloy version
+      ansible.builtin.command:
+        cmd: "/usr/bin/alloy --version"
+      changed_when: false
+      register: __current_deployed_version
+      when: __already_deployed.stat.exists | bool
+
+# ---------------------------------------------------------------------------
+# Install package (OS-specific)
+# ---------------------------------------------------------------------------
+- name: Include RedHat/Rocky setup
+  ansible.builtin.include_tasks:
+    file: setup-RedHat.yml
+  when: ansible_facts['os_family'] in ['RedHat', 'Rocky']
+
+- name: Include Debian/Ubuntu setup
+  ansible.builtin.include_tasks:
+    file: setup-Debian.yml
+  when: ansible_facts['os_family'] == 'Debian'
+
+# ---------------------------------------------------------------------------
+# Systemd override (optional)
+# ---------------------------------------------------------------------------
+- name: Alloy systemd override
+  when: alloy_systemd_override | length > 0
+  block:
+    - name: Ensure that Alloy systemd override path exists
+      ansible.builtin.file:
+        path: "/etc/systemd/system/alloy.service.d"
+        state: directory
+        owner: "root"
+        group: "root"
+        mode: "0750"
+      notify: restart alloy
+
+    - name: Template Alloy systemd override.conf
+      ansible.builtin.template:
+        src: "override.conf.j2"
+        dest: "/etc/systemd/system/alloy.service.d/override.conf"
+        owner: "root"
+        group: "root"
+        mode: "0644"
+      notify: restart alloy
+
+# ---------------------------------------------------------------------------
+# Environment file
+# ---------------------------------------------------------------------------
+- name: Template Alloy env file - {{ __alloy_env_file }}
+  ansible.builtin.template:
+    src: "alloy.j2"
+    dest: "{{ __alloy_env_file }}"
+    owner: "root"
+    group: "root"
+    mode: "0644"
+  no_log: true
+  notify: restart alloy
+
+# ---------------------------------------------------------------------------
+# Drop-in environment files (/etc/alloy/env.d/)
+# ---------------------------------------------------------------------------
+- name: Deploy drop-in environment files
+  when: alloy_env_files | length > 0
+  block:
+    - name: Ensure env.d directory exists
+      ansible.builtin.file:
+        path: "/etc/alloy/env.d"
+        state: directory
+        owner: "root"
+        group: "root"
+        mode: "0755"
+
+    - name: Template drop-in env files
+      ansible.builtin.template:
+        src: "env-fragment.j2"
+        dest: "/etc/alloy/env.d/{{ item.name }}.env"
+        owner: "root"
+        group: "root"
+        mode: "0644"
+      loop: "{{ alloy_env_files }}"
+      loop_control:
+        label: "{{ item.name }}"
+      no_log: true
+      notify: restart alloy
+
+    - name: Ensure systemd override directory exists
+      ansible.builtin.file:
+        path: "/etc/systemd/system/alloy.service.d"
+        state: directory
+        owner: "root"
+        group: "root"
+        mode: "0750"
+
+    - name: Deploy systemd override to load env.d files
+      ansible.builtin.copy:
+        content: |
+          # Ansible Managed — load drop-in environment files
+          [Service]
+          {% for ef in alloy_env_files %}
+          EnvironmentFile=-/etc/alloy/env.d/{{ ef.name }}.env
+          {% endfor %}
+        dest: "/etc/systemd/system/alloy.service.d/env-files.conf"
+        owner: "root"
+        group: "root"
+        mode: "0644"
+      notify: restart alloy
+
+    - name: Find all .env files in env.d directory
+      ansible.builtin.find:
+        paths: "/etc/alloy/env.d"
+        patterns: "*.env"
+      register: __alloy_existing_env_files
+      when: alloy_cleanup_stale_files | bool
+
+    - name: Remove stale env.d files not in current set
+      ansible.builtin.file:
+        path: "{{ item.path }}"
+        state: absent
+      loop: "{{ __alloy_existing_env_files.files }}"
+      loop_control:
+        label: "{{ item.path | basename }}"
+      when:
+        - alloy_cleanup_stale_files | bool
+        - item.path | basename | regex_replace('\\.env$', '') not in (alloy_env_files | map(attribute='name') | list)
+      notify: restart alloy
+
+# ---------------------------------------------------------------------------
+# Config deployment: inline OR multi-file
+# ---------------------------------------------------------------------------
+- name: Template Alloy inline config - /etc/alloy/config.alloy
+  ansible.builtin.template:
+    src: "config.alloy.j2"
+    dest: "/etc/alloy/config.alloy"
+    owner: "root"
+    group: "root"
+    mode: "0644"
+  when:
+    - alloy_config | length > 0
+    - alloy_config_files | length < 1
+    - alloy_env_file_vars.CONFIG_FILE is not defined
+  notify: restart alloy
+
+- name: Deploy multi-config directory
+  when: alloy_config_files | length > 0
+  block:
+    - name: Remove default config.alloy (replaced by multi-file configs)
+      ansible.builtin.file:
+        path: "/etc/alloy/config.alloy"
+        state: absent
+
+    - name: Copy .alloy config files to {{ alloy_config_dir }}
+      ansible.builtin.copy:
+        src: "{{ item }}"
+        dest: "{{ alloy_config_dir }}/{{ item | basename }}"
+        owner: "root"
+        group: "root"
+        mode: "0644"
+      loop: "{{ alloy_config_files }}"
+      notify: restart alloy
+
+    - name: Find all .alloy files in config directory
+      ansible.builtin.find:
+        paths: "{{ alloy_config_dir }}"
+        patterns: "*.alloy"
+      register: __alloy_existing_configs
+      when: alloy_cleanup_stale_files | bool
+
+    - name: Remove stale .alloy files not in current config set
+      ansible.builtin.file:
+        path: "{{ item.path }}"
+        state: absent
+      loop: "{{ __alloy_existing_configs.files }}"
+      loop_control:
+        label: "{{ item.path | basename }}"
+      when:
+        - alloy_cleanup_stale_files | bool
+        - item.path | basename not in (alloy_config_files | map('basename') | list)
+      notify: restart alloy
+
+# ---------------------------------------------------------------------------
+# User groups
+# ---------------------------------------------------------------------------
+- name: Add the Alloy system user to additional groups
+  ansible.builtin.user:
+    name: "alloy"
+    groups: "{{ item }}"
+    system: true
+    append: true
+    create_home: false
+    state: present
+  loop: "{{ alloy_user_groups }}"
+  when: alloy_user_groups | length > 0
+
+# ---------------------------------------------------------------------------
+# Log file access (RHEL/Rocky: /var/log/messages is 0600 root:root)
+# ---------------------------------------------------------------------------
+- name: Ensure acl package is installed (for setfacl)
+  ansible.builtin.package:
+    name: acl
+    state: present
+  when: ansible_facts['os_family'] in ['RedHat', 'Rocky']
+
+- name: Grant alloy read access to existing files in /var/log
+  ansible.builtin.shell:
+    cmd: |
+      getfacl /var/log 2>/dev/null | grep -q 'user:alloy:r-x' || setfacl -R -m u:alloy:rX /var/log
+  register: __acl_result
+  changed_when: __acl_result.rc == 0 and 'user:alloy:r-x' not in (__acl_result.stdout | default(''))
+  when: ansible_facts['os_family'] in ['RedHat', 'Rocky']
+  notify: restart alloy
+
+- name: Set default ACL so new files in /var/log inherit alloy read access
+  ansible.builtin.shell:
+    cmd: |
+      getfacl -d /var/log 2>/dev/null | grep -q 'user:alloy:r-x' || setfacl -R -d -m u:alloy:rX /var/log
+  register: __default_acl_result
+  changed_when: __default_acl_result.rc == 0 and 'user:alloy:r-x' not in (__default_acl_result.stdout | default(''))
+  when: ansible_facts['os_family'] in ['RedHat', 'Rocky']
+
+# ---------------------------------------------------------------------------
+# Firewalld (optional)
+# ---------------------------------------------------------------------------
+- name: Get firewalld state
+  ansible.builtin.systemd:
+    name: "firewalld"
+  register: __firewalld_service_state
+
+- name: Enable firewalld rule to expose Alloy tcp port {{ __alloy_server_http_listen_port }}
+  ansible.posix.firewalld:
+    immediate: true
+    permanent: true
+    port: "{{ __alloy_server_http_listen_port }}/tcp"
+    state: enabled
+  when:
+    - __firewalld_service_state.status.ActiveState == "active"
+    - alloy_expose_port | bool
+
+# ---------------------------------------------------------------------------
+# Start & verify
+# ---------------------------------------------------------------------------
+- name: Flush handlers after deployment
+  ansible.builtin.meta: flush_handlers
+
+- name: Ensure that Alloy is started
+  ansible.builtin.systemd:
+    name: alloy.service
+    state: started
+    enabled: true
+  when: not ansible_check_mode
+
+- name: Verify that Alloy URL is responding
+  ansible.builtin.uri:
+    url: "{{ alloy_readiness_check_use_https | ansible.builtin.ternary('https', 'http') }}://{{ __alloy_server_http_listen_address }}:{{ __alloy_server_http_listen_port }}/-/ready"
+    method: GET
+    use_proxy: "{{ alloy_readiness_check_use_proxy | bool }}"
+  register: __alloy_verify_url_status_code
+  retries: 5
+  delay: 8
+  until: __alloy_verify_url_status_code.status == 200
+  when: not ansible_check_mode

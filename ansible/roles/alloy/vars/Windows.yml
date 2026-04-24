@@ -1,0 +1,8 @@
+---
+__alloy_env_file: ""
+__alloy_win_install_dir: "{{ ansible_env.ProgramFiles }}\\GrafanaLabs\\Alloy"
+__alloy_win_config_dir: "{{ ansible_env.ProgramFiles }}\\GrafanaLabs\\Alloy"
+__alloy_win_data_dir: "{{ ansible_env.ProgramData }}\\GrafanaLabs\\Alloy\\data"
+__alloy_win_installer_url: "https://github.com/grafana/alloy/releases/download/v{{ alloy_version }}/alloy-installer-windows-amd64.exe"
+__alloy_win_installer_path: "{{ ansible_env.TEMP }}\\alloy-installer-windows-amd64.exe"
+__alloy_win_registry_key: "HKLM:\\SOFTWARE\\GrafanaLabs\\Alloy"

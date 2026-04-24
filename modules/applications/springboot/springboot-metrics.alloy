@@ -1,0 +1,36 @@
+// Spring Boot Metrics Module
+// Scrapes Prometheus metrics from Spring Boot Actuator endpoint.
+// Follows Grafana Cloud integration conventions.
+//
+// Requires: spring-boot-starter-actuator + micrometer-registry-prometheus
+// Works on both Linux and Windows.
+// Responsibility: Application / Dev team
+
+discovery.relabel "integrations_springboot" {
+	targets = [{
+		__address__ = "localhost:8080",
+	}]
+
+	rule {
+		target_label = "job"
+		replacement  = "integrations/springboot"
+	}
+
+	rule {
+		target_label = "instance"
+		replacement  = constants.hostname
+	}
+
+	rule {
+		target_label = "service_name"
+		replacement  = sys.env("SERVICE_NAME")
+	}
+}
+
+prometheus.scrape "integrations_springboot" {
+	targets         = discovery.relabel.integrations_springboot.output
+	forward_to      = [prometheus.relabel.add_common_labels.receiver]
+	metrics_path    = "/actuator/prometheus"
+	scrape_interval = "30s"
+	job_name        = "integrations/springboot"
+}

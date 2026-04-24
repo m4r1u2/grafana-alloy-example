@@ -1,0 +1,49 @@
+---
+- name: Stop Alloy service
+  ansible.windows.win_service:
+    name: Alloy
+    state: stopped
+  ignore_errors: true
+
+- name: Uninstall Alloy silently
+  ansible.windows.win_command:
+    cmd: '"{{ __alloy_win_install_dir }}\uninstall.exe" /S'
+  ignore_errors: true
+
+- name: Remove Alloy install directory
+  ansible.windows.win_file:
+    path: "{{ __alloy_win_install_dir }}"
+    state: absent
+
+- name: Remove Alloy data directory
+  ansible.windows.win_file:
+    path: "{{ __alloy_win_data_dir | regex_replace('\\\\data$', '') }}"
+    state: absent
+
+- name: Remove Alloy registry key
+  ansible.windows.win_regedit:
+    path: "{{ __alloy_win_registry_key }}"
+    state: absent
+    delete_key: true
+
+- name: Remove Alloy firewall rule
+  community.windows.win_firewall_rule:
+    name: "Grafana Alloy"
+    state: absent
+  ignore_errors: true
+
+- name: Remove machine environment variables
+  ansible.windows.win_environment:
+    name: "{{ item.key }}"
+    level: machine
+    state: absent
+  loop: "{{ alloy_extra_env_vars | dict2items }}"
+  when: alloy_extra_env_vars | length > 0
+
+- name: Remove machine environment variables from env_files
+  ansible.windows.win_environment:
+    name: "{{ item }}"
+    level: machine
+    state: absent
+  loop: "{{ alloy_env_files | map(attribute='vars', default={}) | map('dict2items') | flatten | map(attribute='key') | list }}"
+  when: alloy_env_files | length > 0

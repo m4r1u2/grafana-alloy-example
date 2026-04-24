@@ -1,0 +1,7 @@
+# Inventory files with real credentials
+inventory/hosts.yml
+inventory/group_vars/
+inventory/host_vars/
+
+# Ansible retry files
+*.retry

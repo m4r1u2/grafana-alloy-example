@@ -1,0 +1,48 @@
+// Windows Metrics Module
+// Collects host-level metrics using the built-in Windows exporter.
+// Aligned with Grafana Cloud Windows integration defaults.
+//
+// Metrics include: CPU, memory, disk, network, logical disk, OS info.
+// Responsibility: OS / Platform team
+
+prometheus.exporter.windows "integrations_windows_exporter" {
+	enabled_collectors = ["cpu", "memory", "pagefile", "logical_disk", "net", "os", "service", "system", "time", "diskdrive"]
+}
+
+discovery.relabel "integrations_windows_exporter" {
+	targets = prometheus.exporter.windows.integrations_windows_exporter.targets
+
+	rule {
+		target_label = "job"
+		replacement  = "integrations/windows_exporter"
+	}
+
+	rule {
+		target_label = "instance"
+		replacement  = constants.hostname
+	}
+}
+
+prometheus.scrape "integrations_windows_exporter" {
+	targets    = discovery.relabel.integrations_windows_exporter.output
+	forward_to = [prometheus.relabel.integrations_windows_exporter.receiver]
+
+	scrape_interval = "60s"
+	job_name        = "integrations/windows_exporter"
+}
+
+prometheus.relabel "integrations_windows_exporter" {
+	forward_to = [prometheus.relabel.add_common_labels.receiver]
+
+	rule {
+		source_labels = ["volume"]
+		regex         = "HarddiskVolume.*"
+		action        = "drop"
+	}
+
+	rule {
+		source_labels = ["__name__"]
+		regex         = "up|windows_cpu_interrupts_total|windows_cpu_logical_processor|windows_cpu_time_total|windows_cs_logical_processors|windows_cs_physical_memory_bytes|windows_disk_drive_status|windows_logical_disk_avg_read_requests_queued|windows_logical_disk_avg_write_requests_queued|windows_logical_disk_free_bytes|windows_logical_disk_idle_seconds_total|windows_logical_disk_read_bytes_total|windows_logical_disk_read_seconds_total|windows_logical_disk_reads_total|windows_logical_disk_size_bytes|windows_logical_disk_write_bytes_total|windows_logical_disk_write_seconds_total|windows_logical_disk_writes_total|windows_memory_physical_free_bytes|windows_memory_physical_total_bytes|windows_net_bytes_received_total|windows_net_bytes_sent_total|windows_net_packets_outbound_discarded_total|windows_net_packets_outbound_errors_total|windows_net_packets_received_discarded_total|windows_net_packets_received_errors_total|windows_net_packets_received_unknown_total|windows_os_info|windows_os_paging_limit_bytes|windows_os_physical_memory_free_bytes|windows_os_timezone|windows_pagefile_limit_bytes|windows_service_status|windows_system_boot_time_timestamp|windows_system_boot_time_timestamp_seconds|windows_system_context_switches_total|windows_system_processor_queue_length|windows_system_system_up_time|windows_time_computed_time_offset_seconds|windows_time_ntp_client_time_sources|windows_time_ntp_round_trip_delay_seconds|windows_time_timezone"
+		action        = "keep"
+	}
+}

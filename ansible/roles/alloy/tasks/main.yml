@@ -1,0 +1,36 @@
+---
+- name: Include OS specific variables
+  ansible.builtin.include_vars:
+    file: "{{ ansible_facts['os_family'] }}.yml"
+
+- name: Preflight checks
+  ansible.builtin.include_tasks:
+    file: "preflight.yml"
+
+- name: Deploy Alloy service (Linux)
+  ansible.builtin.include_tasks:
+    file: "deploy.yml"
+  when:
+    - not alloy_uninstall
+    - ansible_facts['os_family'] in ['RedHat', 'Rocky', 'Debian']
+
+- name: Deploy Alloy service (Windows)
+  ansible.builtin.include_tasks:
+    file: "deploy-windows.yml"
+  when:
+    - not alloy_uninstall
+    - ansible_facts['os_family'] == 'Windows'
+
+- name: Uninstall Alloy service (Linux)
+  ansible.builtin.include_tasks:
+    file: "uninstall.yml"
+  when:
+    - alloy_uninstall
+    - ansible_facts['os_family'] in ['RedHat', 'Rocky', 'Debian']
+
+- name: Uninstall Alloy service (Windows)
+  ansible.builtin.include_tasks:
+    file: "uninstall-windows.yml"
+  when:
+    - alloy_uninstall
+    - ansible_facts['os_family'] == 'Windows'

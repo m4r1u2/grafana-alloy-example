@@ -1,0 +1,40 @@
+// MySQL Log Collection Module (Linux)
+// Collects MySQL error log and slow query log.
+// Aligned with Grafana Cloud MySQL integration defaults.
+//
+// Responsibility: Database / DBA team
+
+local.file_match "logs_integrations_mysql" {
+	path_targets = [{
+		__address__ = "localhost",
+		__path__    = "/var/log/mysql/*.log",
+		instance    = constants.hostname,
+		job         = "integrations/mysql",
+	}]
+}
+
+loki.process "logs_integrations_mysql" {
+	forward_to = [loki.process.add_common_labels.receiver]
+
+	stage.regex {
+		expression = "(?P<timestamp>.+) (?P<thread>[\\d]+) \\[(?P<label>.+?)\\]( \\[(?P<err_code>.+?)\\] \\[(?P<subsystem>.+?)\\])? (?P<msg>.+)"
+	}
+
+	stage.labels {
+		values = {
+			err_code  = "",
+			level     = "label",
+			subsystem = "",
+		}
+	}
+
+	stage.drop {
+		drop_counter_reason = "drop empty lines"
+		expression          = "^ *$"
+	}
+}
+
+loki.source.file "logs_integrations_mysql" {
+	targets    = local.file_match.logs_integrations_mysql.targets
+	forward_to = [loki.process.logs_integrations_mysql.receiver]
+}

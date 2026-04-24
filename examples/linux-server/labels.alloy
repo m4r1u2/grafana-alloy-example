@@ -1,0 +1,70 @@
+// Shared Labels Module
+// Adds common labels to all telemetry data for consistent identification
+// across the organization.
+//
+// These labels help with filtering, grouping, and routing in Grafana.
+//
+// Environment variables required:
+//   ENVIRONMENT   - Deployment environment (production, staging, dev)
+//   TEAM          - Owning team name (checkout, platform, dba)
+//   REGION        - Deployment region (eu-west-1, us-east-1)
+//   SYSTEM        - Business system / domain (payments, orders, identity)
+//   SERVER_CLASS  - Server role (web, app, db, worker)
+//   ZONE          - Network zone / segment (external-dmz, internal, data)
+
+// ============================================================================
+// Common relabeling for all metrics
+// ============================================================================
+
+prometheus.relabel "add_common_labels" {
+	forward_to = [prometheus.remote_write.default.receiver]
+
+	rule {
+		target_label = "environment"
+		replacement  = sys.env("ENVIRONMENT")
+	}
+
+	rule {
+		target_label = "team"
+		replacement  = sys.env("TEAM")
+	}
+
+	rule {
+		target_label = "region"
+		replacement  = sys.env("REGION")
+	}
+
+	rule {
+		target_label = "system"
+		replacement  = sys.env("SYSTEM")
+	}
+
+	rule {
+		target_label = "server_class"
+		replacement  = sys.env("SERVER_CLASS")
+	}
+
+	rule {
+		target_label = "zone"
+		replacement  = sys.env("ZONE")
+	}
+}
+
+// ============================================================================
+// Common log processing - adds standard labels to all logs
+// ============================================================================
+
+loki.process "add_common_labels" {
+	forward_to = [loki.write.default.receiver]
+
+	stage.static_labels {
+		values = {
+			environment  = sys.env("ENVIRONMENT"),
+			team         = sys.env("TEAM"),
+			region       = sys.env("REGION"),
+			system       = sys.env("SYSTEM"),
+			server_class = sys.env("SERVER_CLASS"),
+			zone         = sys.env("ZONE"),
+		}
+	}
+}
